@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Shopping Lista</title>
+
+<style>
+body{
+font-family:Arial;
+background:#f3f4f6;
+padding:20px;
+}
+
+.container{
+max-width:500px;
+margin:auto;
+background:white;
+padding:20px;
+border-radius:10px;
+}
+
+input,button{
+width:100%;
+padding:10px;
+margin-top:10px;
+}
+
+.item{
+display:flex;
+justify-content:space-between;
+padding:10px;
+border-bottom:1px solid #eee;
+}
+</style>
+</head>
+
+<body>
+
+<div class="container">
+
+<h2>Shopping lista</h2>
+
+<input id="item" placeholder="Proizvod">
+<button onclick="addItem()">Dodaj</button>
+
+<div id="list"></div>
+
+</div>
+
+<script>
+
+let items=[]
+
+function addItem(){
+
+let name=document.getElementById("item").value
+
+if(!name)return
+
+items.push(name)
+
+render()
+
+document.getElementById("item").value=""
+
+}
+
+function render(){
+
+let list=document.getElementById("list")
+
+list.innerHTML=""
+
+items.forEach((item,i)=>{
+
+list.innerHTML+=`
+<div class="item">
+${item}
+<button onclick="removeItem(${i})">X</button>
+</div>
+`
+
+})
+
+}
+
+function removeItem(i){
+
+items.splice(i,1)
+
+render()
+
+}
+
+</script>
+
+</body>
+</html>
