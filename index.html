@@ -1,10 +1,10 @@
+
 <!DOCTYPE html>
 <html lang="hr">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Popis</title>
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <style>
     :root{
       --bg:#0f172a;
@@ -38,6 +38,7 @@
       padding:16px;
       box-shadow:0 10px 30px rgba(0,0,0,.25);
       backdrop-filter: blur(8px);
+      margin-bottom:16px;
     }
     h1,h2,h3,p{margin:0}
     .top{
@@ -93,6 +94,8 @@
     .btn-danger{
       background:var(--danger);
       color:white;
+      width:auto;
+      min-width:54px;
     }
     .hidden{display:none !important}
     .section-title{
@@ -168,7 +171,15 @@
       padding:8px 12px;
       font-size:13px;
     }
-    .mb16{margin-bottom:16px}
+    .notice{
+      background:#172554;
+      border:1px solid #1d4ed8;
+      color:#dbeafe;
+      padding:12px;
+      border-radius:14px;
+      font-size:14px;
+      line-height:1.45;
+    }
   </style>
 </head>
 <body>
@@ -189,10 +200,12 @@
         <button class="btn" onclick="signIn()">Prijava</button>
         <button class="btn-secondary" onclick="signUp()">Registracija</button>
       </div>
-      <p class="sub">Prijavi se s korisnikom kojeg si napravio u Supabaseu.</p>
+      <div class="notice">
+        Ako si user napravio ručno u Supabaseu, prijavi se tim emailom i lozinkom.
+      </div>
     </div>
 
-    <div id="appCard" class="hidden stack">
+    <div id="appCard" class="hidden">
       <div class="card stack">
         <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;">
           <div>
@@ -238,14 +251,17 @@
     </div>
   </div>
 
-  <script>
-    const SUPABASE_URL = "https://bufzspxjanetqbjdepgx.supabase.co";
-    const SUPABASE_ANON_KEY ="sb_publishable_bTUnpulBH4v5FgGbKutLog_uleNGDaS" ;
+  <script type="module">
+    import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    const SUPABASE_URL = "https://bufzspxjanetqbjdepgx.supabase.co";
+    const SUPABASE_ANON_KEY = "sb_publishable_bTUnpulBH4v5FgGbKutLog_uleNGDaS";
+
+    const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
     let currentUser = null;
     let currentHouseholdId = null;
+    let realtimeChannel = null;
 
     function qs(id){
       return document.getElementById(id);
@@ -259,8 +275,16 @@
       const email = qs("email").value.trim();
       const password = qs("password").value.trim();
 
+      if (!email || !password) {
+        showMessage("Upiši email i lozinku.");
+        return;
+      }
+
       const { error } = await supabase.auth.signInWithPassword({ email, password });
-      if (error) return showMessage(error.message);
+      if (error) {
+        showMessage("Greška prijave: " + error.message);
+        return;
+      }
 
       await initApp();
     }
@@ -269,13 +293,26 @@
       const email = qs("email").value.trim();
       const password = qs("password").value.trim();
 
-      const { error } = await supabase.auth.signUp({ email, password });
-      if (error) return showMessage(error.message);
+      if (!email || !password) {
+        showMessage("Upiši email i lozinku.");
+        return;
+      }
 
-      showMessage("Registracija poslana. Ako treba, potvrdi email pa se prijavi.");
+      const { error } = await supabase.auth.signUp({ email, password });
+      if (error) {
+        showMessage("Greška registracije: " + error.message);
+        return;
+      }
+
+      showMessage("Registracija poslana.");
     }
 
     async function signOutUser(){
+      if (realtimeChannel) {
+        await supabase.removeChannel(realtimeChannel);
+        realtimeChannel = null;
+      }
+
       await supabase.auth.signOut();
       currentUser = null;
       currentHouseholdId = null;
@@ -299,12 +336,12 @@
         .maybeSingle();
 
       if (error) {
-        showMessage("Greška kod učitavanja householda: " + error.message);
+        showMessage("Greška kod učitavanja liste: " + error.message);
         return null;
       }
 
       if (!data) {
-        showMessage("Ovaj user nije povezan s household listom.");
+        showMessage("Ovaj user nije povezan s listom.");
         return null;
       }
 
@@ -319,7 +356,10 @@
       const store_note = qs("store_note").value.trim();
       const comment = qs("comment").value.trim();
 
-      if (!name) return showMessage("Upiši naziv proizvoda.");
+      if (!name) {
+        showMessage("Upiši naziv proizvoda.");
+        return;
+      }
 
       const payload = {
         household_id: currentHouseholdId,
@@ -335,7 +375,10 @@
       };
 
       const { error } = await supabase.from("shopping_items").insert(payload);
-      if (error) return showMessage(error.message);
+      if (error) {
+        showMessage("Greška spremanja: " + error.message);
+        return;
+      }
 
       qs("name").value = "";
       qs("quantity").value = "";
@@ -354,7 +397,10 @@
         .eq("household_id", currentHouseholdId)
         .order("created_at", { ascending: false });
 
-      if (error) return showMessage(error.message);
+      if (error) {
+        showMessage("Greška učitavanja artikala: " + error.message);
+        return;
+      }
 
       renderItems(data || []);
     }
@@ -412,10 +458,14 @@
     async function toggleBought(id, currentValue){
       const { error } = await supabase
         .from("shopping_items")
-        .update({ is_bought: !currentValue, is_missing: currentValue ? false : false })
+        .update({ is_bought: !currentValue, is_missing: false })
         .eq("id", id);
 
-      if (error) return showMessage(error.message);
+      if (error) {
+        showMessage("Greška updatea: " + error.message);
+        return;
+      }
+
       await loadItems();
     }
 
@@ -425,7 +475,11 @@
         .update({ is_missing: !currentValue, is_bought: false })
         .eq("id", id);
 
-      if (error) return showMessage(error.message);
+      if (error) {
+        showMessage("Greška updatea: " + error.message);
+        return;
+      }
+
       await loadItems();
     }
 
@@ -435,7 +489,11 @@
         .delete()
         .eq("id", id);
 
-      if (error) return showMessage(error.message);
+      if (error) {
+        showMessage("Greška brisanja: " + error.message);
+        return;
+      }
+
       await loadItems();
     }
 
@@ -465,15 +523,25 @@
 
       await loadItems();
 
-      supabase
-        .channel("shopping-realtime")
-        .on(
-          "postgres_changes",
-          { event: "*", schema: "public", table: "shopping_items" },
-          async () => { await loadItems(); }
-        )
-        .subscribe();
+      if (!realtimeChannel) {
+        realtimeChannel = supabase
+          .channel("shopping-realtime")
+          .on(
+            "postgres_changes",
+            { event: "*", schema: "public", table: "shopping_items" },
+            async () => { await loadItems(); }
+          )
+          .subscribe();
+      }
     }
+
+    window.signIn = signIn;
+    window.signUp = signUp;
+    window.signOutUser = signOutUser;
+    window.addItem = addItem;
+    window.toggleBought = toggleBought;
+    window.toggleMissing = toggleMissing;
+    window.deleteItem = deleteItem;
 
     initApp();
   </script>
